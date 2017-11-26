@@ -1,11 +1,15 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-
+#include <vector>
+#include <cmath>
+#include <iostream>
+using namespace std;
 
 #include "gurobi_c++.h"
-
-
+int readit(char *filename, vector<double> * pave_ret,  vector<double> *pvar_ret, vector<vector<double> > *pcovs, int * pstocknum);
+vector<double> powermethod(vector<vector<double> > Q);
+vector<vector<double> > powermethod_geteigenvector(vector<vector<double> > Q);
 
 int main(void)
 {
@@ -28,36 +32,28 @@ int main(void)
   char **names, *vartype;
 
   /** from the file, we need the following data */
-  int numasset;
+  int numasset = 1000;
   int numnames = 100;
-  double *ave_ret;
-  ave_ret = (double *) calloc(numasset, sizeof(double));
-  double *var_ret;
-  var_ret = (double *) calloc(numasset, sizeof(double));
-  double *cov_matrix;
-  cov_matrix = (double *) calloc(numasset * numasset, sizeof(double));
-
+  vector<double> ave_ret(numasset);
+  vector<double> var_ret(numasset);
+  vector<vector<double> > cov_mat(numasset, vector<double>(numasset));
 
   /* here we need a readit fucntion to read and calculate it from the csv file */
-
-
-
+  readit("russell_1000_closing_clean.csv", &ave_ret, &var_ret, &cov_mat, &numasset);
+  printf("data reading finished\n");
 
   /* for PCA part, we need the following*/
 
   int numfactor = 10;
-  double *e_value;
-  e_value = (double *) calloc(numfactor, sizeof(double));
-  double *e_vector;
-  e_vector = (double *) calloc(numfactor * numasset, sizeof(double));
+  vector<double> e_value(numfactor);
+  vector<vector<double> > e_vector(numfactor, vector<double>(numasset));
 
   /* here we need to call powermethod to generate: eigenvalues, eigenvectors */
 
+  e_value = powermethod(cov_mat);
+  e_vector = powermethod_geteigenvector(cov_mat);
 
-
-
-
-  
+  printf("power method finished\n");
 
   n = numasset + numfactor + numasset; /** numasset 'x' variables, numfactor factor variables, numasset binary variables **/
 
@@ -181,17 +177,17 @@ int main(void)
 
   /** numfactor factor constraints, first one is next**/
 
-  for(j=0; j<numfactor; j++){
-    for(k=0; k<numasset; k++){
-      cval[j][k] = e_vector[j * numasset + k];
-      cind[j][k] = k;
+  for(int j=0; j<numfactor; j++){
+    for(int k=0; k<numasset; k++){
+      cval[k] = e_vector[j][k];
+      cind[k] = k;
     }
-    cval[j][numasset] = -1;
-    cind[j][numasset] = numasset + j;
+    cval[numasset] = -1;
+    cind[numasset] = numasset + j;
     numnonz = numasset + 1;
     rhs = 0;
     sense = GRB_EQUAL;
-    retcode = GRBaddconstr(model, numnonz, cind, cval, sense, rhs, "No.%d_constraint",j+1);
+    retcode = GRBaddconstr(model, numnonz, cind, cval, sense, rhs, "No.constraint");
     if (retcode) goto BACK;
   }
 
@@ -210,7 +206,7 @@ int main(void)
 
 
   /** sum of z variables <= names_constraint **/
-  for(j=0; j<numasset; j++){
+  for(int j=0; j<numasset; j++){
     cval[j] = 1.0;
     cind[j] = j + numasset + numfactor;
   }
@@ -225,7 +221,7 @@ int main(void)
 
   /** now say xj = 0 unless zj = 1 **/
 
-  for (j = 0; j < numasset; j++){
+  for(int j = 0; j < numasset; j++){
 	  cval[0] = 1.0;  cind[0] = j;
 	  cval[1] = -1.0;  cind[1] = numasset + numfactor + j;
 
@@ -264,7 +260,7 @@ int main(void)
 
   /** now let's see the values **/
 
-  for(j = 0; j < n; j++){
+  for(int j = 0; j < n; j++){
     printf("%s = %g\n", names[j], x[j]);
   }
 
